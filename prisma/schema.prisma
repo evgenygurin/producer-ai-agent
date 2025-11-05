@@ -1,0 +1,104 @@
+// Prisma schema for Producer AI Agent
+// This is your Prisma schema file for TypeScript/Node.js clients
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_URL")
+}
+
+// User model - synced with Auth0
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  auth0Id    String   @unique @map("auth0_id") @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  name       String?  @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  workflows   Workflow[]
+  ragSessions RagSession[]
+
+  @@map("users")
+  @@schema("metadata")
+}
+
+// Workflow model - n8n workflow tracking
+model Workflow {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  n8nWorkflowId String?  @map("n8n_workflow_id") @db.VarChar(255)
+  name          String   @db.VarChar(255)
+  description   String?  @db.Text
+  status        String   @default("active") @db.VarChar(50)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  user        User?        @relation(fields: [userId], references: [id])
+  ragSessions RagSession[]
+
+  @@index([userId])
+  @@index([n8nWorkflowId])
+  @@map("workflows")
+  @@schema("metadata")
+}
+
+// RAG Session model - tracking RAG operations
+model RagSession {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @map("user_id") @db.Uuid
+  workflowId      String?  @map("workflow_id") @db.Uuid
+  r2rCollectionId String?  @map("r2r_collection_id") @db.Uuid
+  sessionData     Json?    @map("session_data") @db.JsonB
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  user     User?     @relation(fields: [userId], references: [id])
+  workflow Workflow? @relation(fields: [workflowId], references: [id])
+
+  @@index([userId])
+  @@index([workflowId])
+  @@map("rag_sessions")
+  @@schema("metadata")
+}
+
+// Music Generation Log
+model MusicGeneration {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  taskId      String   @map("task_id") @db.VarChar(255)
+  prompt      String   @db.Text
+  style       String?  @db.VarChar(255)
+  status      String   @db.VarChar(50)
+  clips       Json?    @db.JsonB
+  metadata    Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([userId])
+  @@index([taskId])
+  @@map("music_generations")
+  @@schema("metadata")
+}
+
+// Collections for organizing documents
+model Collection {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  r2rId       String?  @unique @map("r2r_id") @db.Uuid
+  metadata    Json?    @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([userId])
+  @@map("collections")
+  @@schema("metadata")
+}

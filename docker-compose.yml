@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for R2R vectors and n8n
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: r2r
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - ai_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # R2R - RAG system
+  r2r:
+    image: ragtoriches/r2r:main
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DBNAME=r2r
+      - R2R_PROJECT_NAME=producer-ai
+      - CONFIG_NAME=${R2R_CONFIG_NAME:-default}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    ports:
+      - "7272:7272"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai_network
+    volumes:
+      - r2r_data:/app/data
+      - ./r2r-config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7272/v2/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # n8n - Workflow automation
+  n8n:
+    image: n8nio/n8n:latest
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
+      - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${N8N_DB:-n8n}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-postgres}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      # Auth0 integration
+      - N8N_AUTH0_ENABLED=${AUTH0_ENABLED:-false}
+      - N8N_AUTH0_DOMAIN=${AUTH0_DOMAIN:-}
+      - N8N_AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID:-}
+      - N8N_AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET:-}
+    ports:
+      - "5678:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      r2r:
+        condition: service_healthy
+    networks:
+      - ai_network
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/workflows
+      - ./n8n-custom-nodes:/custom-nodes
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and queue management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - ai_network
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # API Gateway / Backend service
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      - PORT=8000
+      - R2R_URL=http://r2r:7272
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/r2r
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN:-}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE:-}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID:-}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AIMUSIC_API_KEY=${AIMUSIC_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - r2r
+    networks:
+      - ai_network
+    volumes:
+      - ./src:/app/src
+      - ./output:/app/output
+
+networks:
+  ai_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  r2r_data:
+  n8n_data:
+  redis_data:

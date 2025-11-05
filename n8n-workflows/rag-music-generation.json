@@ -1,0 +1,178 @@
+{
+  "name": "RAG-Powered Music Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-music",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "generate-music"
+    },
+    {
+      "parameters": {
+        "url": "=http://api-gateway:8000/api/v1/rag/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.body.prompt }}"
+            },
+            {
+              "name": "limit",
+              "value": 5
+            },
+            {
+              "name": "collection_id",
+              "value": "music-references"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "rag-query",
+      "name": "RAG Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract RAG context and enhance music prompt\nconst ragResponse = $input.first().json;\nconst originalPrompt = $('Webhook Trigger').first().json.body.prompt;\nconst musicStyle = $('Webhook Trigger').first().json.body.style || '';\n\n// Combine RAG context with original prompt\nconst contextInfo = ragResponse.sources\n  .map(s => s.content)\n  .join(' ');\n\nconst enhancedPrompt = `${originalPrompt}\\n\\nContext: ${contextInfo}`;\n\nreturn {\n  json: {\n    gpt_description_prompt: enhancedPrompt,\n    style: musicStyle,\n    custom_mode: false,\n    make_instrumental: $('Webhook Trigger').first().json.body.instrumental || false,\n    mv: 'chirp-v4',\n    voice_gender: $('Webhook Trigger').first().json.body.voice_gender || 'female'\n  }\n};"
+      },
+      "id": "enhance-prompt",
+      "name": "Enhance Prompt with RAG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://api-gateway:8000/api/v1/music/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "generate-music",
+      "name": "Generate Music",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "table": "metadata.rag_sessions",
+        "columns": "user_id,workflow_id,r2r_collection_id,session_data",
+        "additionalFields": {}
+      },
+      "id": "log-to-postgres",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [850, 500],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "RAG Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG Query": {
+      "main": [
+        [
+          {
+            "node": "Enhance Prompt with RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enhance Prompt with RAG": {
+      "main": [
+        [
+          {
+            "node": "Generate Music",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Music": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-05T00:00:00.000Z",
+  "versionId": "1"
+}

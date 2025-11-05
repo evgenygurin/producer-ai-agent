@@ -1,0 +1,178 @@
+{
+  "name": "Document Ingestion to R2R",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest-documents",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-ingest",
+      "name": "Webhook - Ingest Documents",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "ingest-documents"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and prepare documents for ingestion\nconst documents = $json.body.documents || [];\nconst collectionId = $json.body.collection_id || 'default';\n\nif (!Array.isArray(documents) || documents.length === 0) {\n  throw new Error('No documents provided');\n}\n\n// Validate each document\nconst validatedDocs = documents.map((doc, index) => {\n  if (!doc.content) {\n    throw new Error(`Document at index ${index} missing content`);\n  }\n  \n  return {\n    content: doc.content,\n    title: doc.title || `Document ${index + 1}`,\n    metadata: {\n      ...doc.metadata,\n      ingestion_timestamp: new Date().toISOString(),\n      source: 'n8n-workflow'\n    }\n  };\n});\n\nreturn {\n  json: {\n    documents: validatedDocs,\n    collection_id: collectionId\n  }\n};"
+      },
+      "id": "validate-docs",
+      "name": "Validate Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://api-gateway:8000/api/v1/rag/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "ingest-to-r2r",
+      "name": "Ingest to R2R",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO metadata.workflows (n8n_workflow_id, name, description, status) VALUES ($1, $2, $3, $4) ON CONFLICT (n8n_workflow_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP RETURNING id",
+        "additionalFields": {
+          "queryParameters": "={{ JSON.stringify([$execution.id, 'Document Ingestion', 'Ingest documents to R2R', 'active']) }}"
+        }
+      },
+      "id": "log-workflow",
+      "name": "Log Workflow Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [650, 500],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'success', message: 'Documents ingested successfully', result: $json } }}"
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 500,
+        "responseBody": "={{ { status: 'error', message: 'Failed to ingest documents', error: $json } }}"
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Ingest Documents": {
+      "main": [
+        [
+          {
+            "node": "Validate Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Documents": {
+      "main": [
+        [
+          {
+            "node": "Ingest to R2R",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Workflow Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest to R2R": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-05T00:00:00.000Z",
+  "versionId": "1"
+}

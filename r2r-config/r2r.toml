@@ -1,0 +1,34 @@
+# R2R Configuration for Producer AI Agent
+# https://r2r-docs.sciphi.ai/deep-dive/config
+
+[completion]
+provider = "openai"
+model = "gpt-4-turbo-preview"
+temperature = 0.7
+max_tokens = 1024
+
+[embedding]
+provider = "openai"
+model = "text-embedding-3-small"
+dimension = 1536
+batch_size = 32
+
+[database]
+provider = "postgres"
+
+[vector_database]
+provider = "pgvector"
+collection_name = "producer_ai_documents"
+
+[chunking]
+provider = "unstructured"
+strategy = "auto"
+chunk_size = 512
+chunk_overlap = 50
+
+[kg]
+# Knowledge Graph extraction settings
+provider = "openai"
+model = "gpt-4-turbo-preview"
+extraction_enabled = true
+kg_search_enabled = true
