@@ -1,0 +1,370 @@
+{
+  "name": "Advanced GraphRAG with Multi-Agent Search",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "graphrag-query",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-graphrag",
+      "name": "Webhook - GraphRAG Query",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 400],
+      "webhookId": "graphrag-query"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 1: Query Analysis and Decomposition\nconst query = $json.body.query;\nconst strategy = $json.body.strategy || 'hybrid';\nconst useGraphRAG = $json.body.use_graph_rag || true;\n\nreturn {\n  json: {\n    original_query: query,\n    strategy: strategy,\n    use_graph_rag: useGraphRAG,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "analyze-query",
+      "name": "Query Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "url": "=http://api-gateway:8000/api/v1/rag/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.original_query }}"
+            },
+            {
+              "name": "limit",
+              "value": 10
+            },
+            {
+              "name": "use_kg",
+              "value": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "semantic-search",
+      "name": "Semantic Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://r2r:7272/v2/graphs/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.original_query }}"
+            },
+            {
+              "name": "max_hops",
+              "value": 2
+            },
+            {
+              "name": "extract_entities",
+              "value": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "graph-search",
+      "name": "Knowledge Graph Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge results from semantic and graph search\nconst semanticResults = $('Semantic Search').first().json.sources || [];\nconst graphResults = $('Knowledge Graph Search').first().json.entities || [];\n\n// Reciprocal Rank Fusion\nfunction rrf(results1, results2, k = 60) {\n  const scores = {};\n  \n  results1.forEach((item, idx) => {\n    const id = item.id || idx;\n    scores[id] = (scores[id] || 0) + 1 / (k + idx + 1);\n  });\n  \n  results2.forEach((item, idx) => {\n    const id = item.id || idx;\n    scores[id] = (scores[id] || 0) + 1 / (k + idx + 1);\n  });\n  \n  return Object.entries(scores)\n    .sort((a, b) => b[1] - a[1])\n    .slice(0, 10)\n    .map(([id, score]) => ({ id, score }));\n}\n\nconst fusedResults = rrf(semanticResults, graphResults);\n\nreturn {\n  json: {\n    semantic_results: semanticResults,\n    graph_results: graphResults,\n    fused_results: fusedResults,\n    total_sources: semanticResults.length + graphResults.length\n  }\n};"
+      },
+      "id": "fusion",
+      "name": "Result Fusion (RRF)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM-based reranking\nconst results = $json.fused_results || [];\nconst query = $('Query Analysis').first().json.original_query;\n\n// Prepare reranking prompt\nconst rerankPrompt = `Rank these passages by relevance to the query: \"${query}\"\n\nPassages:\n${results.slice(0, 5).map((r, i) => `${i+1}. ${JSON.stringify(r)}`).join('\\n')}\n\nReturn the IDs in order of relevance (most relevant first).`;\n\nreturn {\n  json: {\n    rerank_prompt: rerankPrompt,\n    results_to_rerank: results,\n    query: query\n  }\n};"
+      },
+      "id": "reranking",
+      "name": "Reranking Preparation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "url": "=http://api-gateway:8000/api/v1/rag/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.rerank_prompt }}"
+            },
+            {
+              "name": "limit",
+              "value": 1
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "llm-rerank",
+      "name": "LLM Reranking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final answer generation with context\nconst rerankedResults = $('LLM Reranking').first().json.answer || '';\nconst originalQuery = $('Query Analysis').first().json.original_query;\nconst fusedData = $('Result Fusion (RRF)').first().json;\n\n// Generate final answer\nconst finalPrompt = `Based on the following context, answer the query: \"${originalQuery}\"\n\nContext:\n${JSON.stringify(fusedData.semantic_results.slice(0, 3), null, 2)}\n\nProvide a comprehensive answer with citations.`;\n\nreturn {\n  json: {\n    final_prompt: finalPrompt,\n    original_query: originalQuery,\n    num_sources: fusedData.total_sources\n  }\n};"
+      },
+      "id": "answer-generation",
+      "name": "Answer Generation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {
+        "url": "=http://api-gateway:8000/api/v1/rag/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.final_prompt }}"
+            },
+            {
+              "name": "limit",
+              "value": 5
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "final-answer",
+      "name": "Generate Final Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1650, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Evaluate answer quality\nconst answer = $('Generate Final Answer').first().json.answer || '';\nconst sources = $('Result Fusion (RRF)').first().json.semantic_results || [];\n\n// Simple groundedness check\nfunction checkGroundedness(answer, sources) {\n  const answerWords = answer.toLowerCase().split(/\\s+/);\n  const sourceText = sources.map(s => s.content).join(' ').toLowerCase();\n  \n  const groundedWords = answerWords.filter(word => \n    word.length > 4 && sourceText.includes(word)\n  );\n  \n  return groundedWords.length / Math.max(answerWords.length, 1);\n}\n\nconst groundednessScore = checkGroundedness(answer, sources);\nconst hallucinationDetected = groundednessScore < 0.3;\n\nreturn {\n  json: {\n    answer: answer,\n    evaluation: {\n      groundedness_score: groundednessScore,\n      hallucination_detected: hallucinationDetected,\n      confidence: Math.min(groundednessScore, 1.0),\n      num_sources: sources.length\n    },\n    sources: sources.slice(0, 5),\n    strategy: 'graphrag_hybrid'\n  }\n};"
+      },
+      "id": "evaluation",
+      "name": "Answer Evaluation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO metadata.rag_sessions (workflow_id, session_data, created_at) VALUES ($1, $2, NOW()) RETURNING id",
+        "additionalFields": {
+          "queryParameters": "={{ JSON.stringify([\"graphrag-workflow\", JSON.stringify($json)]) }}"
+        }
+      },
+      "id": "log-session",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1850, 600],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2050, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - GraphRAG Query": {
+      "main": [
+        [
+          {
+            "node": "Query Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Analysis": {
+      "main": [
+        [
+          {
+            "node": "Semantic Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Knowledge Graph Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Semantic Search": {
+      "main": [
+        [
+          {
+            "node": "Result Fusion (RRF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Graph Search": {
+      "main": [
+        [
+          {
+            "node": "Result Fusion (RRF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result Fusion (RRF)": {
+      "main": [
+        [
+          {
+            "node": "Reranking Preparation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reranking Preparation": {
+      "main": [
+        [
+          {
+            "node": "LLM Reranking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Reranking": {
+      "main": [
+        [
+          {
+            "node": "Answer Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Generation": {
+      "main": [
+        [
+          {
+            "node": "Generate Final Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Final Answer": {
+      "main": [
+        [
+          {
+            "node": "Answer Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["graphrag", "advanced", "hybrid-search"],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-05T00:00:00.000Z",
+  "versionId": "2"
+}

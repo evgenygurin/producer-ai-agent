@@ -1,34 +1,165 @@
-# R2R Configuration for Producer AI Agent
+# R2R Advanced Configuration for Producer AI Agent
+# Based on RAG Zero to Hero Guide best practices
 # https://r2r-docs.sciphi.ai/deep-dive/config
 
+# ====================================
+# LLM Completion Settings
+# ====================================
 [completion]
 provider = "openai"
 model = "gpt-4-turbo-preview"
 temperature = 0.7
-max_tokens = 1024
+max_tokens = 2048
+top_p = 0.95
+frequency_penalty = 0.0
+presence_penalty = 0.0
 
+# ====================================
+# Embedding Model Settings
+# ====================================
 [embedding]
 provider = "openai"
 model = "text-embedding-3-small"
 dimension = 1536
 batch_size = 32
+# Use larger embedding model for better semantic understanding
+# Alternative: text-embedding-3-large (3072 dimensions)
 
+# ====================================
+# Database Configuration
+# ====================================
 [database]
 provider = "postgres"
 
 [vector_database]
 provider = "pgvector"
 collection_name = "producer_ai_documents"
+# Distance metric for similarity search
+distance_metric = "cosine"  # Options: cosine, l2, inner_product
 
+# ====================================
+# Advanced Chunking Strategy
+# ====================================
 [chunking]
 provider = "unstructured"
-strategy = "auto"
+# Chunking strategies: auto, recursive, semantic, markdown, fixed_size
+strategy = "recursive"
 chunk_size = 512
-chunk_overlap = 50
+chunk_overlap = 100  # Increased overlap for better context preservation
+# Respect document structure
+respect_document_boundaries = true
+# Markdown-specific settings
+markdown_header_split = true
 
+# ====================================
+# Hybrid Search Configuration
+# ====================================
+[search]
+# Enable hybrid search (semantic + keyword)
+hybrid_search = true
+# Weight for semantic search (0-1, remaining goes to keyword)
+semantic_weight = 0.7
+keyword_weight = 0.3
+# Fusion method for combining results
+fusion_method = "reciprocal_rank"  # Options: reciprocal_rank, weighted_sum
+# Reciprocal rank fusion constant
+rrf_k = 60
+
+# ====================================
+# Reranking Configuration
+# ====================================
+[reranking]
+enabled = true
+provider = "cohere"  # Options: cohere, sentence-transformers, cross-encoder
+model = "rerank-english-v2.0"
+# Number of documents to rerank
+top_k = 10
+
+# ====================================
+# Knowledge Graph (GraphRAG) Settings
+# ====================================
 [kg]
-# Knowledge Graph extraction settings
 provider = "openai"
 model = "gpt-4-turbo-preview"
+# Enable knowledge graph extraction
 extraction_enabled = true
+# Enable graph-based search
 kg_search_enabled = true
+# Entity extraction settings
+extract_entities = true
+extract_relationships = true
+extract_communities = true
+# Graph traversal settings
+max_hops = 2
+min_entity_confidence = 0.6
+# Community detection for better organization
+community_detection_algorithm = "leiden"  # Options: leiden, louvain
+
+# ====================================
+# Query Enhancement
+# ====================================
+[query_enhancement]
+# Query expansion for better retrieval
+query_expansion = true
+# Generate multiple query variations
+multi_query = true
+num_queries = 3
+# Hypothetical document embeddings (HyDE)
+hyde_enabled = false
+
+# ====================================
+# Contextual Compression
+# ====================================
+[compression]
+enabled = true
+# Extract only relevant parts of documents
+extractive_compression = true
+max_context_length = 8000  # Total context for LLM
+
+# ====================================
+# RAG Evaluation Metrics
+# ====================================
+[evaluation]
+# Enable automatic evaluation
+enabled = true
+# Metrics to compute
+compute_relevance = true
+compute_groundedness = true
+detect_hallucinations = true
+# Thresholds
+min_relevance_score = 0.5
+min_groundedness_score = 0.7
+
+# ====================================
+# Agentic RAG Settings
+# ====================================
+[agent]
+# Enable multi-step agentic retrieval
+enabled = false
+max_iterations = 3
+# Tools available to agent
+tools = ["search", "graph_query", "summarize"]
+
+# ====================================
+# Caching Configuration
+# ====================================
+[cache]
+# Cache embeddings and responses
+enabled = true
+provider = "redis"
+ttl = 3600  # 1 hour
+# Cache strategies
+cache_embeddings = true
+cache_completions = true
+
+# ====================================
+# Logging and Monitoring
+# ====================================
+[logging]
+level = "INFO"
+# Log all queries and responses for evaluation
+log_queries = true
+log_responses = true
+# Performance metrics
+track_latency = true
+track_token_usage = true

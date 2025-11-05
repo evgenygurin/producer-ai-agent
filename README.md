@@ -18,10 +18,14 @@
 - **Выбор пола голоса** (мужской/женский)
 - **Автоматическая загрузка** сгенерированных файлов
 
-### 🔍 RAG (R2R)
-- **Мультимодальная обработка** документов (PDF, TXT, JSON, PNG, MP3)
-- **Гибридный поиск** (семантический + keyword search)
-- **Knowledge Graphs** с автоматическим извлечением сущностей
+### 🔍 RAG (R2R) - Production-Ready
+- **Hybrid Search** - Reciprocal Rank Fusion (semantic + keyword)
+- **GraphRAG** - Knowledge graphs с community detection
+- **Multi-Strategy Retrieval** - Basic, Hybrid, Graph, Agent
+- **Advanced Reranking** - Cross-encoder и LLM-based
+- **Query Enhancement** - Expansion, multi-query, HyDE
+- **Contextual Compression** - Extractive compression
+- **Evaluation Metrics** - Relevance, groundedness, hallucination detection
 - **Векторная база данных** на PostgreSQL/pgvector
 - **Коллекции** для организации документов
 
@@ -266,6 +270,8 @@ result = fsm.generate_music(request=request)
 
 В папке `examples/` находятся готовые примеры:
 
+### Базовые примеры (музыка)
+
 ```bash
 # Базовая генерация
 python examples/basic_generation.py
@@ -275,6 +281,20 @@ python examples/custom_lyrics.py
 
 # Инструментальная музыка
 python examples/instrumental.py
+```
+
+### Продвинутые RAG примеры
+
+```bash
+# Запустить все примеры RAG
+python examples/advanced_rag_examples.py
+
+# Или отдельные примеры:
+# - Hybrid Search (semantic + keyword)
+# - GraphRAG with Knowledge Graphs
+# - Agentic multi-step reasoning
+# - RAG-enhanced music generation
+# - Advanced chunking strategies
 ```
 
 ## Структура проекта
@@ -503,6 +523,8 @@ MIT License
 
 В проекте включены готовые workflows:
 
+### Базовые Workflows
+
 1. **RAG-Powered Music Generation** (`rag-music-generation.json`)
    - Принимает текстовый промпт
    - Выполняет RAG поиск для улучшения промпта
@@ -515,7 +537,17 @@ MIT License
    - Организует по коллекциям
    - Отслеживает в базе данных
 
-Импортируйте workflows через n8n UI: http://localhost:5678
+### Продвинутые Workflows
+
+3. **Advanced GraphRAG** (`advanced-graphrag-workflow.json`)
+   - Query analysis и decomposition
+   - Parallel semantic + graph search
+   - Reciprocal Rank Fusion (RRF)
+   - Multi-stage reranking
+   - Answer evaluation с метриками
+   - Hallucination detection
+
+**Импортируйте workflows через n8n UI:** http://localhost:5678
 
 ## Примеры использования
 
@@ -621,14 +653,47 @@ make test
 curl http://localhost:8000/health
 ```
 
+## RAG Best Practices
+
+Платформа реализует продвинутые RAG техники из **RAG Zero to Hero Guide**:
+
+### Advanced Techniques
+
+- **Hybrid Search** с Reciprocal Rank Fusion
+- **GraphRAG** для complex entity relationships
+- **Agentic RAG** с multi-step reasoning
+- **Reranking** через cross-encoder models
+- **Query Enhancement** (expansion, multi-query, HyDE)
+- **Contextual Compression** для снижения шума
+- **Evaluation Metrics** (relevance, groundedness, hallucination detection)
+
+### Chunking Strategies
+
+- Semantic chunking - по смыслу
+- Markdown chunking - по структуре
+- Recursive chunking - с overlap
+- Configurable через R2R
+
+### Configuration
+
+Смотрите `r2r-config/r2r.toml` для полной конфигурации всех RAG параметров.
+
+Подробное руководство: [RAG_BEST_PRACTICES.md](./RAG_BEST_PRACTICES.md)
+
 ## Полезные ссылки
 
+### Документация
 - [R2R Documentation](https://r2r-docs.sciphi.ai)
 - [n8n Documentation](https://docs.n8n.io)
 - [Auth0 Documentation](https://auth0.com/docs)
 - [Prisma Documentation](https://www.prisma.io/docs)
 - [Supabase Documentation](https://supabase.com/docs)
 - [AIMusicAPI.ai Documentation](https://docs.aimusicapi.ai/)
+
+### RAG Resources
+- [RAG Zero to Hero Guide](https://github.com/evgenygurin/rag-zero-to-hero-guide)
+- [R2R GitHub](https://github.com/evgenygurin/R2R)
+- [RAG Best Practices](./RAG_BEST_PRACTICES.md)
 
 ## Contributing
 
